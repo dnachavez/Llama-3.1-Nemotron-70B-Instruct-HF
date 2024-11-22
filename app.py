@@ -1,43 +1,23 @@
 import streamlit as st
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-import torch
+from transformers import pipeline
 
 @st.cache_resource
-def load_model():
-    # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained("nvidia/Llama-3.1-Nemotron-70B-Instruct-HF")
-    model = AutoModelForCausalLM.from_pretrained(
-        "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
+def load_pipeline():
+    # Load the text-generation pipeline
+    pipe = pipeline(
+        "text-generation",
+        model="nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
         device_map="auto",
-        torch_dtype=torch.float16,
     )
-    return tokenizer, model
-
-def generate_response(prompt, tokenizer, model):
-    # Encode the prompt
-    input_ids = tokenizer.encode(prompt, return_tensors='pt').to(model.device)
-    
-    # Generate a response
-    with torch.no_grad():
-        output_ids = model.generate(
-            input_ids,
-            max_length=1024,
-            do_sample=True,
-            top_p=0.95,
-            temperature=0.8,
-            num_return_sequences=1,
-        )
-    # Decode the response
-    response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-    return response
+    return pipe
 
 def main():
     st.title("Llama-3.1-Nemotron-70B-Instruct-HF Chatbot")
-    st.write("Interact with the Llama-3.1-Nemotron-70B-Instruct-HF model.")
+    st.write("Interact with the Llama-3.1-Nemotron-70B-Instruct-HF model using the pipeline.")
 
-    # Load the model and tokenizer
+    # Load the pipeline
     with st.spinner("Loading the model..."):
-        tokenizer, model = load_model()
+        pipe = load_pipeline()
 
     # Initialize conversation history
     if 'messages' not in st.session_state:
@@ -56,12 +36,26 @@ def main():
     if user_input:
         # Append user message to conversation history
         st.session_state.messages.append({"role": "user", "content": user_input})
-        
+
+        # Prepare the input for the pipeline
+        conversation = "\n".join([f"{msg['role']}: {msg['content']}" for msg in st.session_state.messages])
+
         # Generate and display the bot's response
         with st.spinner("Generating response..."):
-            response = generate_response(user_input, tokenizer, model)
+            output = pipe(
+                conversation,
+                max_length=1024,
+                do_sample=True,
+                top_p=0.95,
+                temperature=0.8,
+                num_return_sequences=1,
+            )[0]['generated_text']
+
+            # Extract the new part of the response
+            response = output[len(conversation):].strip()
+
         st.session_state.messages.append({"role": "bot", "content": response})
-        
+
         # Rerun the app to display the updated conversation
         st.experimental_rerun()
 
